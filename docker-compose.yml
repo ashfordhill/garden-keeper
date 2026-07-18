@@ -1,0 +1,13 @@
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    # Model checkpoint selection for Wave 2 real inference (Agent C):
+    # environment:
+    #   - GK_SAM_CHECKPOINT=sam2.1-tiny
