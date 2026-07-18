@@ -3,6 +3,10 @@ uvicorn[standard]>=0.30
 python-multipart>=0.0.9
 pillow>=10.0
 numpy>=1.26
+opencv-python-headless>=4.9
 
-# --- Wave 2 (Agent C) adds real inference dependencies here: ---
-# torch (CPU), sam2 or ultralytics SAM port, opencv-python-headless
+# Real inference (SAM). NOTE: install torch from the CPU wheel index first so
+# you don't pull multi-GB CUDA wheels — see backend/README.md:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.3
+transformers>=4.44

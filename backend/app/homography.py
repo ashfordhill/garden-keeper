@@ -1,12 +1,12 @@
 """Perspective rectification: oblique photo -> top-down view.
 
-WAVE 1 STUB (owned by Agent C in Wave 2): performs a Pillow QUAD transform,
-which crops/warps the marked quadrilateral to a true-scale rectangle. This is
-already a usable homography for the marked region; Agent C may replace it
-with an OpenCV full-frame warp (cv2.getPerspectiveTransform + warpPerspective)
-so context around the calibration rectangle is preserved too.
+OpenCV homography: cv2.getPerspectiveTransform maps the marked quadrilateral
+(TL, TR, BR, BL in photo pixels) onto a true-scale rectangle rendered at
+DEFAULT_PIXELS_PER_UNIT, then cv2.warpPerspective produces the rectified crop.
 """
 
+import cv2
+import numpy as np
 from PIL import Image
 
 from .models import RectifyRequest
@@ -19,10 +19,16 @@ def rectify(image: Image.Image, req: RectifyRequest) -> tuple[Image.Image, float
     ppu = DEFAULT_PIXELS_PER_UNIT
     out_w = max(1, round(req.realWidth * ppu))
     out_h = max(1, round(req.realHeight * ppu))
-    tl, tr, br, bl = req.corners
-    # PIL QUAD expects NW, SW, SE, NE.
-    quad = (tl[0], tl[1], bl[0], bl[1], br[0], br[1], tr[0], tr[1])
-    rectified = image.transform(
-        (out_w, out_h), Image.Transform.QUAD, quad, resample=Image.Resampling.BILINEAR
+
+    src = np.array(req.corners, dtype=np.float32)  # TL, TR, BR, BL
+    dst = np.array(
+        [[0, 0], [out_w, 0], [out_w, out_h], [0, out_h]], dtype=np.float32
     )
-    return rectified, ppu
+    matrix = cv2.getPerspectiveTransform(src, dst)
+    warped = cv2.warpPerspective(
+        np.asarray(image.convert("RGB")),
+        matrix,
+        (out_w, out_h),
+        flags=cv2.INTER_LINEAR,
+    )
+    return Image.fromarray(warped), ppu

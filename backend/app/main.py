@@ -29,8 +29,9 @@ app.add_middleware(
 
 
 @app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "inference": "stub"}
+def health() -> dict[str, str | None]:
+    inference, model = segment.current_inference()
+    return {"status": "ok", "inference": inference, "model": model}
 
 
 @app.post("/api/photos")
@@ -56,7 +57,7 @@ def segment_photo(image_id: str, req: SegmentRequest) -> SegmentResponse:
     photo = photos.get(image_id)
     if photo is None:
         raise HTTPException(status_code=404, detail="Unknown imageId")
-    return segment.segment(photo, req)
+    return segment.segment(photo, req, image_id=image_id)
 
 
 @app.post("/api/photos/{image_id}/rectify")

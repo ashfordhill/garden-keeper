@@ -1,61 +1,77 @@
-"""Segmentation: photo + prompt -> simplified polygon regions.
+"""Segmentation dispatch: photo + prompt -> simplified polygon regions.
 
-WAVE 1 STUB (owned by Agent C in Wave 2): returns a plausible organic blob
-around the prompt so the frontend photo UX is fully exercisable end-to-end
-without model weights.
+Inference backend is selected by the GK_INFERENCE env var:
+  - "auto" (default): real SAM inference; if the model or its dependencies
+    are unavailable, fall back to the Wave 1 blob stub with a logged warning.
+  - "stub": always use the blob stub (no torch/weights needed — used by CI
+    and by other agents' machines).
+  - "sam": force real inference; errors propagate instead of falling back.
 
-Agent C replaces `segment()` internals with:
-  1. SAM 2.1 (tiny/small checkpoint, configurable via GK_SAM_CHECKPOINT env)
-     point/box-prompted mask prediction (CPU PyTorch).
-  2. vectorize.mask_to_polygon() to turn the best mask into a simplified
-     polygon honoring req.maxVertices.
-The function signature and response model must not change.
+The HTTP-facing response model is the frozen Wave 1 contract.
 """
 
-import math
+import logging
+import os
 
-from .models import BoxPrompt, SegmentedRegion, SegmentRequest, SegmentResponse
+from .models import SegmentRequest, SegmentResponse
 from .photos import StoredPhoto
+from .stub_segment import segment_stub
 
-STUB_SCORE = 0.5  # deliberately mediocre so stub results are recognizable
+log = logging.getLogger(__name__)
+
+_warned_fallback = False
 
 
-def segment(photo: StoredPhoto, req: SegmentRequest) -> SegmentResponse:
-    if req.points:
-        cx = sum(p.x for p in req.points) / len(req.points)
-        cy = sum(p.y for p in req.points) / len(req.points)
-        radius = min(photo.width, photo.height) * 0.12
-    elif req.box:
-        cx = (req.box.x1 + req.box.x2) / 2
-        cy = (req.box.y1 + req.box.y2) / 2
-        radius = min(abs(req.box.x2 - req.box.x1), abs(req.box.y2 - req.box.y1)) / 2
-    else:
-        cx, cy = photo.width / 2, photo.height / 2
-        radius = min(photo.width, photo.height) * 0.25
+def inference_mode() -> str:
+    return os.environ.get("GK_INFERENCE", "auto").strip().lower()
 
-    # Wobbly blob: a circle with two superimposed sine harmonics.
-    n = min(req.maxVertices, 24)
-    polygon: list[tuple[float, float]] = []
-    for i in range(n):
-        theta = 2 * math.pi * i / n
-        r = radius * (1 + 0.15 * math.sin(3 * theta) + 0.08 * math.sin(7 * theta))
-        x = min(max(cx + r * math.cos(theta), 0), photo.width)
-        y = min(max(cy + r * math.sin(theta), 0), photo.height)
-        polygon.append((x, y))
 
-    xs = [p[0] for p in polygon]
-    ys = [p[1] for p in polygon]
-    bbox = BoxPrompt(x1=min(xs), y1=min(ys), x2=max(xs), y2=max(ys))
-    area = abs(
-        sum(
-            polygon[i][0] * polygon[(i + 1) % n][1]
-            - polygon[(i + 1) % n][0] * polygon[i][1]
-            for i in range(n)
-        )
-        / 2
+def current_inference() -> tuple[str, str | None]:
+    """(backend, model) the next segment call will use — for /api/health.
+
+    Never triggers a model load; in auto mode before first use it reports
+    "sam" if the inference dependencies are importable.
+    """
+    mode = inference_mode()
+    if mode == "stub":
+        return "stub", None
+    from . import sam_engine
+
+    if sam_engine.is_loaded():
+        return "sam", sam_engine.model_name()
+    if mode == "sam":
+        return "sam", sam_engine.model_name()
+    import importlib.util
+
+    deps_ok = all(
+        importlib.util.find_spec(m) is not None for m in ("torch", "transformers")
     )
-    return SegmentResponse(
-        regions=[
-            SegmentedRegion(polygon=polygon, bbox=bbox, areaPx=area, score=STUB_SCORE)
-        ]
-    )
+    if deps_ok:
+        return "sam", sam_engine.model_name()
+    return "stub", None
+
+
+def segment(
+    photo: StoredPhoto, req: SegmentRequest, image_id: str = ""
+) -> SegmentResponse:
+    global _warned_fallback
+    mode = inference_mode()
+    if mode == "stub":
+        return segment_stub(photo, req)
+
+    try:
+        from . import sam_engine
+
+        engine = sam_engine.get_engine()
+    except Exception as exc:
+        if mode == "sam":
+            raise
+        if not _warned_fallback:
+            log.warning(
+                "SAM model unavailable (%s); falling back to stub segmentation. "
+                "Set GK_INFERENCE=stub to silence this warning.",
+                exc,
+            )
+            _warned_fallback = True
+        return segment_stub(photo, req)
+    return engine.segment(image_id, photo, req)

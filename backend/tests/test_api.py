@@ -23,7 +23,10 @@ def image_id() -> str:
 
 
 def test_health():
-    assert client.get("/api/health").json()["status"] == "ok"
+    body = client.get("/api/health").json()
+    assert body["status"] == "ok"
+    assert body["inference"] in ("stub", "sam")
+    assert "model" in body
 
 
 def test_segment_point_prompt(image_id):
@@ -40,6 +43,17 @@ def test_segment_point_prompt(image_id):
     assert 0 <= region["score"] <= 1
     for x, y in region["polygon"]:
         assert 0 <= x <= 800 and 0 <= y <= 600
+
+
+def test_segment_box_prompt(image_id):
+    res = client.post(
+        f"/api/photos/{image_id}/segment",
+        json={"box": {"x1": 200, "y1": 150, "x2": 600, "y2": 450}, "maxVertices": 16},
+    )
+    assert res.status_code == 200
+    regions = res.json()["regions"]
+    assert len(regions) == 1
+    assert 3 <= len(regions[0]["polygon"]) <= 16
 
 
 def test_segment_unknown_image():
