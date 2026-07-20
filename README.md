@@ -1,12 +1,29 @@
 # garden-keeper
 
+- [garden-keeper](#garden-keeper)
+  - [Background](#background)
+  - [Features](#features)
+    - [Import landscape](#import-landscape)
+    - [Plant selection](#plant-selection)
+    - [Plant Art Generation](#plant-art-generation)
+    - [Groundcover as Spray](#groundcover-as-spray)
+    - [Seasonal View \& Timeline Player](#seasonal-view--timeline-player)
+  - [Early Attempts](#early-attempts)
+
+## Background
+
 An Excalidraw-inspired garden planner and record-keeper.
+
+
 
 I wanted a digital and fun way to keep track of my garden; I've handdrawn my landscapes in the past
 and labelled my plants to help with layouts. But I don't particularly enjoy this and it's not as friendly
 as digital visual editing, when trying to keep track of layouts year-over-year.
 
 Furthermore, like diagramming in software, sometimes it's nice to see plans at a high-level view because it can make you see the concept in a new way.
+
+
+## Features
 
 ### Import landscape
 
@@ -49,7 +66,7 @@ Furthermore, like diagramming in software, sometimes it's nice to see plans at a
   </tr>
 </table>
 
-### Japanese maple
+### Plant Art Generation
 
 The plant options available are not icons like PNGs but vector data stored and rendered. This was chosen to keep plant data uniform and resizeable.
 
@@ -83,7 +100,7 @@ Not super satisfied with this result if I were personally using this app but I h
   </tr>
 </table>
 
-### Season View & Timeline Player
+### Seasonal View & Timeline Player
 
 One thing that I find challenging with landscape planning is trying to find things that will bloom at different points of the year. 
 
@@ -104,13 +121,7 @@ This timeline feature is another reason why I wanted uniform, SVG-based renderin
   </tr>
 </table>
 
-### Past Progress
-
-#### Corner selection on photo
-
-
-#### First-pass plant grid
-
+## Early Attempts
 
 <table>
   <tr>
