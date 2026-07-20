@@ -1,9 +1,61 @@
 @import "tailwindcss";
 
+:root {
+  --gk-canvas: #f4f6f3;
+  --gk-panel: #ffffff;
+  --gk-ink: #1a1f1a;
+  --gk-muted: #6b726b;
+  --gk-line: #e2e6e0;
+  --gk-hover: #eef1ec;
+  --gk-accent: #2f5d3a;
+  --gk-accent-soft: #dce9df;
+  --gk-danger: #b91c1c;
+  --gk-grid: #c5ccc0;
+  --gk-scrim: rgba(15, 20, 15, 0.55);
+  --gk-guide: #f0f7f1;
+}
+
+.dark {
+  --gk-canvas: #121512;
+  --gk-panel: #1c211c;
+  --gk-ink: #e8ece6;
+  --gk-muted: #9aa39a;
+  --gk-line: #2e352e;
+  --gk-hover: #2a312a;
+  --gk-accent: #8fbf98;
+  --gk-accent-soft: #243028;
+  --gk-danger: #f87171;
+  --gk-grid: #3a423a;
+  --gk-scrim: rgba(0, 0, 0, 0.65);
+  --gk-guide: #1a241c;
+}
+
+@theme inline {
+  --color-gk-canvas: var(--gk-canvas);
+  --color-gk-panel: var(--gk-panel);
+  --color-gk-ink: var(--gk-ink);
+  --color-gk-muted: var(--gk-muted);
+  --color-gk-line: var(--gk-line);
+  --color-gk-hover: var(--gk-hover);
+  --color-gk-accent: var(--gk-accent);
+  --color-gk-accent-soft: var(--gk-accent-soft);
+  --color-gk-danger: var(--gk-danger);
+  --color-gk-grid: var(--gk-grid);
+  --color-gk-guide: var(--gk-guide);
+}
+
 html,
 body,
 #root {
   height: 100%;
   margin: 0;
   overscroll-behavior: none;
+  background: var(--gk-canvas);
+  color: var(--gk-ink);
+}
+
+.gk-panel {
+  background: var(--gk-panel);
+  color: var(--gk-ink);
+  border-color: var(--gk-line);
 }

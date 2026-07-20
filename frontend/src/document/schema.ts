@@ -149,6 +149,8 @@ const elementBase = {
   seed: z.number().int(),
   opacity: z.number().min(0).max(1).default(1),
   locked: z.boolean().default(false),
+  /** Shared id: select/move treats members as one unit (e.g. photo import). */
+  groupId: z.string().optional(),
 };
 
 export const ShapeStyle = z.object({
@@ -231,6 +233,12 @@ export const PlantElement = z.object({
   showLabel: z.boolean().default(false),
   /** Per-instance nickname, e.g. "front-left hydrangea". */
   label: z.string().optional(),
+  /** Free-form notes / description for this planting. */
+  notes: z.string().optional(),
+  /** Instance tags (separate from species catalog tags). */
+  tags: z.array(z.string()).optional(),
+  /** Date planted, ISO `YYYY-MM-DD`. */
+  plantedAt: z.string().optional(),
 });
 
 export const Element = z.discriminatedUnion("type", [
@@ -243,6 +251,9 @@ export const Element = z.discriminatedUnion("type", [
   PlantElement,
 ]);
 export type Element = z.infer<typeof Element>;
+export type PolygonElement = z.infer<typeof PolygonElement>;
+export type ImageElement = z.infer<typeof ImageElement>;
+export type PlantElement = z.infer<typeof PlantElement>;
 export type ElementType = Element["type"];
 
 // ---------------------------------------------------------------------------
@@ -255,11 +266,52 @@ export type ViewKind = z.infer<typeof ViewKind>;
 export const MeasureUnit = z.enum(["ft", "m"]);
 export type MeasureUnit = z.infer<typeof MeasureUnit>;
 
+/**
+ * Structural ground materials. Keep this small and stable — seasonal looks
+ * (e.g. grass going brown in fall/winter) hang off these keys later, not
+ * off ad-hoc shape roles.
+ */
+export const LandscapeMaterial = z.enum(["grass", "mulch", "hardscape"]);
+export type LandscapeMaterial = z.infer<typeof LandscapeMaterial>;
+
+/** One painted/extracted surface inside the site rectangle. Points are 0..1. */
+export const LandscapeSurface = z.object({
+  id: z.string(),
+  material: LandscapeMaterial,
+  points: z.array(Point),
+});
+export type LandscapeSurface = z.infer<typeof LandscapeSurface>;
+
+/**
+ * Locked background layer for a view: one clean site rectangle (the calibrated
+ * "big square") filled with grass/mulch/hardscape surfaces. Plants and drawn
+ * shapes sit above this; edit via the Import wizard, not the select tool.
+ */
+export const GroundLayer = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
+  surfaces: z.array(LandscapeSurface),
+  /** Rectified (or original) photo for the "original overlay" toggle. */
+  overlay: z
+    .object({
+      href: z.string(),
+      imageId: z.string().optional(),
+      visible: z.boolean().default(false),
+      opacity: z.number().min(0).max(1).default(0.5),
+    })
+    .optional(),
+});
+export type GroundLayer = z.infer<typeof GroundLayer>;
+
 export const GardenView = z.object({
   id: z.string(),
   name: z.string(),
   kind: ViewKind,
   elements: z.array(Element),
+  /** Locked landscape background from the import wizard. */
+  ground: GroundLayer.optional(),
   /** Real-world scale, set during photo calibration. Optional until calibrated. */
   scale: z
     .object({

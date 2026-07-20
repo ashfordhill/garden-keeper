@@ -164,17 +164,23 @@ export const ElementRenderer = memo(function ElementRenderer({
       if (!sp) return null;
       const cx = el.x + el.width / 2;
       const cy = el.y + el.height / 2;
+      const base = Math.min(el.width, el.height);
+      // Groundcover patches stretch to fill non-square spray bounds.
+      const sx = sp.archetype === "groundcover" ? el.width / base : 1;
+      const sy = sp.archetype === "groundcover" ? el.height / base : 1;
       return (
         <g
           transform={`translate(${cx} ${cy}) rotate(${(el.angle * 180) / Math.PI})`}
           opacity={el.opacity}
         >
-          <PlantIcon
-            archetype={sp.archetype}
-            params={resolveSeasonalForm(sp, seasonPhase)}
-            seed={el.seed}
-            size={Math.min(el.width, el.height)}
-          />
+          <g transform={sx !== 1 || sy !== 1 ? `scale(${sx} ${sy})` : undefined}>
+            <PlantIcon
+              archetype={sp.archetype}
+              params={resolveSeasonalForm(sp, seasonPhase)}
+              seed={el.seed}
+              size={base}
+            />
+          </g>
           {el.showLabel && (
             <text
               y={el.height / 2 + 14}

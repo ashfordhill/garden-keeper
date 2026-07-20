@@ -200,7 +200,8 @@ const TREES: PlantSpecies[] = [
     displayPhase: "mid-fall",
     forms: forms(
       {
-        foliage: "spiky",
+        // Lobed palmate leaves — not "spiky"/conifer (that drew a triangle hat).
+        foliage: "lobed",
         bloom: "dot",
         bloomColor: "#ad1457",
         branch: { pattern: "umbrella", density: 0.8, color: "#3e2723" },
@@ -252,6 +253,7 @@ const TREES: PlantSpecies[] = [
       {
         "mid-spring": { leaf: "#78a0a8", vol: 1 },
         "mid-summer": { leaf: "#6a929a", vol: 1 },
+        "mid-fall": { leaf: "#6a929a", vol: 1 },
         winter: { leaf: "#5d8189", vol: 1 },
       },
     ),
@@ -271,6 +273,11 @@ const SHRUBS: PlantSpecies[] = [
     tags: ["blue", "shade-tolerant"],
     displayPhase: "mid-summer",
     forms: {
+      "mid-spring": {
+        foliage: { shape: "oval", color: "#7cb342", volume: 0.7 },
+        bloom: { shape: "cluster", color: "#64b5f6", density: 0 },
+        branching: { pattern: "clumping", density: 0.8, color: "#6d4c41" },
+      },
       "late-spring": {
         foliage: { shape: "oval", color: "#558b2f", volume: 0.9 },
         bloom: { shape: "cluster", color: "#64b5f6", density: 0.3 },
@@ -279,6 +286,11 @@ const SHRUBS: PlantSpecies[] = [
       "mid-summer": {
         foliage: { shape: "oval", color: "#33691e", volume: 1 },
         bloom: { shape: "cluster", color: "#42a5f5", density: 1 },
+        branching: { pattern: "clumping", density: 0.8, color: "#6d4c41" },
+      },
+      "mid-fall": {
+        foliage: { shape: "oval", color: "#827717", volume: 0.75 },
+        bloom: { shape: "cluster", color: "#90caf9", density: 0 },
         branching: { pattern: "clumping", density: 0.8, color: "#6d4c41" },
       },
       winter: {
@@ -305,6 +317,7 @@ const SHRUBS: PlantSpecies[] = [
       {
         "mid-spring": { leaf: "#66953f", vol: 1 },
         "mid-summer": { leaf: "#4c7a3d", vol: 1 },
+        "mid-fall": { leaf: "#4c7a3d", vol: 1 },
         winter: { leaf: "#5d6e3f", vol: 1 },
       },
     ),
@@ -327,6 +340,7 @@ const SHRUBS: PlantSpecies[] = [
         "mid-spring": { leaf: "#4c7a3d", vol: 0.9, bloom: 1 },
         "late-spring": { leaf: "#4c7a3d", vol: 0.95, bloom: 0.4 },
         "mid-summer": { leaf: "#3d6633", vol: 1 },
+        "mid-fall": { leaf: "#3d6633", vol: 0.95 },
         winter: { leaf: "#4a5d3a", vol: 0.85 },
       },
     ),
@@ -369,8 +383,10 @@ const SHRUBS: PlantSpecies[] = [
         branch: { pattern: "spreading", density: 0.85, color: "#5d4037" },
       },
       {
+        "mid-spring": { leaf: "#58756a", vol: 1 },
         "mid-summer": { leaf: "#58756a", vol: 1 },
         "early-fall": { leaf: "#58756a", vol: 1, bloom: 0.3 },
+        "mid-fall": { leaf: "#4f6a60", vol: 1 },
         winter: { leaf: "#4f6a60", vol: 1 },
       },
     ),
@@ -413,9 +429,11 @@ const SHRUBS: PlantSpecies[] = [
         branch: { pattern: "clumping", density: 0.7, color: "#33691e" },
       },
       {
+        "mid-spring": { leaf: "#558b2f", vol: 0.5 },
         "late-spring": { leaf: "#2e7d32", vol: 0.9, bloom: 0.5 },
         "mid-summer": { leaf: "#2e7d32", vol: 1, bloom: 1 },
         "early-fall": { leaf: "#33691e", vol: 0.95, bloom: 0.8 },
+        "mid-fall": { leaf: "#33691e", vol: 0.85, bloom: 0.3 },
         winter: { leaf: "#2e7d32", vol: 0 },
       },
     ),
@@ -435,6 +453,11 @@ const GRASSES: PlantSpecies[] = [
     tags: ["purple", "ornamental", "full-sun"],
     displayPhase: "late-summer",
     forms: {
+      "mid-spring": {
+        foliage: { shape: "blade", color: "#7e57c2", volume: 0.4 },
+        bloom: { shape: "plume", color: "#ce93d8", density: 0 },
+        branching: { pattern: "clumping", density: 0.9, color: "#4a148c" },
+      },
       "mid-summer": {
         foliage: { shape: "blade", color: "#6a1b9a", volume: 0.9 },
         bloom: { shape: "plume", color: "#ce93d8", density: 0.4 },
@@ -445,9 +468,15 @@ const GRASSES: PlantSpecies[] = [
         bloom: { shape: "plume", color: "#ce93d8", density: 1 },
         branching: { pattern: "clumping", density: 0.9, color: "#4a148c" },
       },
+      "mid-fall": {
+        foliage: { shape: "blade", color: "#7e57c2", volume: 0.7 },
+        bloom: { shape: "plume", color: "#ce93d8", density: 0.5 },
+        branching: { pattern: "clumping", density: 0.9, color: "#4a148c" },
+      },
+      // Tender; dies to the ground after frost in most of N. America.
       winter: {
-        foliage: { shape: "blade", color: "#8d6e63", volume: 0.4 },
-        bloom: { shape: "plume", color: "#bcaaa4", density: 0.2 },
+        foliage: { shape: "blade", color: "#8d6e63", volume: 0 },
+        bloom: { shape: "plume", color: "#bcaaa4", density: 0 },
         branching: { pattern: "clumping", density: 0.9, color: "#5d4037" },
       },
     },
@@ -467,10 +496,13 @@ const GRASSES: PlantSpecies[] = [
         branch: { pattern: "clumping", density: 0.95, color: "#558b2f" },
       },
       {
+        "mid-spring": { leaf: "#7cb342", vol: 0.7 },
         "late-spring": { leaf: "#7cb342", vol: 0.9 },
         "early-summer": { leaf: "#689f38", vol: 1, bloom: 0.7, flower: "#c9a0dc" },
+        "mid-summer": { leaf: "#689f38", vol: 1, bloom: 0.9 },
         "late-summer": { leaf: "#689f38", vol: 1, bloom: 1 },
         "mid-fall": { leaf: "#c9a227", vol: 0.9, bloom: 0.8 },
+        // Stands as tawny winter interest (not evergreen living green).
         winter: { leaf: "#c2a878", vol: 0.7, bloom: 0.5, flower: "#d6c6a5", stems: "#a1887f" },
       },
     ),
@@ -493,6 +525,7 @@ const GRASSES: PlantSpecies[] = [
         "mid-spring": { leaf: "#8fa8bf", vol: 0.9 },
         "early-summer": { leaf: "#8fa8bf", vol: 1, bloom: 0.4 },
         "mid-summer": { leaf: "#7d9ec7", vol: 1, bloom: 0.2 },
+        "mid-fall": { leaf: "#7c8fa3", vol: 0.9 },
         winter: { leaf: "#7c8fa3", vol: 0.8 },
       },
     ),
@@ -512,9 +545,12 @@ const GRASSES: PlantSpecies[] = [
         branch: { pattern: "clumping", density: 0.9, color: "#558b2f" },
       },
       {
+        "mid-spring": { leaf: "#7cb342", vol: 0.5 },
         "early-summer": { leaf: "#689f38", vol: 0.9 },
+        "mid-summer": { leaf: "#689f38", vol: 1, bloom: 0.4 },
         "late-summer": { leaf: "#689f38", vol: 1, bloom: 0.8 },
         "early-fall": { leaf: "#d4a017", vol: 1, bloom: 1 },
+        "mid-fall": { leaf: "#c9a227", vol: 0.95, bloom: 0.8 },
         "late-fall": { leaf: "#c2a878", vol: 0.8, bloom: 0.6, flower: "#d6c6a5" },
         winter: { leaf: "#b8a07e", vol: 0.6, bloom: 0.3, flower: "#d6c6a5", stems: "#8d6e63" },
       },
@@ -542,10 +578,13 @@ const FLOWERS: PlantSpecies[] = [
         branch: { pattern: "clumping", density: 0.6, color: "#33691e" },
       },
       {
+        "mid-spring": { leaf: "#7cb342", vol: 0.45 },
         "late-spring": { leaf: "#558b2f", vol: 0.8 },
         "mid-summer": { leaf: "#33691e", vol: 1, bloom: 1 },
         "early-fall": { leaf: "#33691e", vol: 0.9, bloom: 0.5 },
-        winter: { leaf: "#6d5c4b", vol: 0.1, bloom: 0.2, flower: "#5d4a3a" },
+        "mid-fall": { leaf: "#6d5c4b", vol: 0.35, bloom: 0 },
+        // Herbaceous; dies back (dried seed heads are stems, not foliage/bloom).
+        winter: { leaf: "#6d5c4b", vol: 0 },
       },
     ),
   },
@@ -564,10 +603,13 @@ const FLOWERS: PlantSpecies[] = [
         branch: { pattern: "clumping", density: 0.6, color: "#33691e" },
       },
       {
+        "mid-spring": { leaf: "#7cb342", vol: 0.5 },
         "early-summer": { leaf: "#558b2f", vol: 0.9, bloom: 0.3 },
+        "mid-summer": { leaf: "#33691e", vol: 1, bloom: 0.8 },
         "late-summer": { leaf: "#33691e", vol: 1, bloom: 1 },
         "early-fall": { leaf: "#546e2f", vol: 0.9, bloom: 0.6 },
-        winter: { leaf: "#6d5c4b", vol: 0.1 },
+        "mid-fall": { leaf: "#6d5c4b", vol: 0.3 },
+        winter: { leaf: "#6d5c4b", vol: 0 },
       },
     ),
   },
@@ -590,7 +632,7 @@ const FLOWERS: PlantSpecies[] = [
         "early-summer": { leaf: "#558b2f", vol: 1, bloom: 1 },
         "mid-summer": { leaf: "#558b2f", vol: 1, bloom: 0.7 },
         "mid-fall": { leaf: "#827717", vol: 0.5 },
-        winter: { leaf: "#8d6e63", vol: 0.05 },
+        winter: { leaf: "#8d6e63", vol: 0 },
       },
     ),
   },
@@ -610,9 +652,10 @@ const FLOWERS: PlantSpecies[] = [
       },
       {
         "mid-spring": { leaf: "#6b9080", vol: 0.6 },
-        "early-summer": { leaf: "#567d68", vol: 1 },
+        "early-summer": { leaf: "#567d68", vol: 1, bloom: 0.3 },
         "mid-summer": { leaf: "#567d68", vol: 1, bloom: 0.6 },
-        "mid-fall": { leaf: "#c0a43c", vol: 0.6 },
+        "mid-fall": { leaf: "#c0a43c", vol: 0.35 },
+        // Fully deciduous; mush after frost.
         winter: { leaf: "#8d6e63", vol: 0 },
       },
     ),
@@ -635,7 +678,11 @@ const FLOWERS: PlantSpecies[] = [
         "early-spring": { leaf: "#7cb342", vol: 0.4, bloom: 0.2 },
         "mid-spring": { leaf: "#689f38", vol: 0.5, bloom: 1 },
         "late-spring": { leaf: "#9e9d24", vol: 0.3, bloom: 0.2 },
-        "early-summer": { leaf: "#c0a43c", vol: 0.08 },
+        // Dormant underground after foliage yellows; no summer/fall/winter top growth.
+        "early-summer": { leaf: "#c0a43c", vol: 0 },
+        "mid-summer": { leaf: "#c0a43c", vol: 0 },
+        "mid-fall": { leaf: "#c0a43c", vol: 0 },
+        winter: { leaf: "#c0a43c", vol: 0 },
       },
     ),
   },
@@ -657,7 +704,10 @@ const FLOWERS: PlantSpecies[] = [
         "early-spring": { leaf: "#7cb342", vol: 0.5, bloom: 1 },
         "mid-spring": { leaf: "#689f38", vol: 0.5, bloom: 0.6 },
         "late-spring": { leaf: "#9e9d24", vol: 0.3 },
-        "early-summer": { leaf: "#c0a43c", vol: 0.05 },
+        "early-summer": { leaf: "#c0a43c", vol: 0 },
+        "mid-summer": { leaf: "#c0a43c", vol: 0 },
+        "mid-fall": { leaf: "#c0a43c", vol: 0 },
+        winter: { leaf: "#c0a43c", vol: 0 },
       },
     ),
   },
@@ -679,6 +729,7 @@ const FLOWERS: PlantSpecies[] = [
         "mid-spring": { leaf: "#6b8f3e", vol: 0.7 },
         "late-spring": { leaf: "#396b2f", vol: 1, bloom: 1 },
         "early-summer": { leaf: "#396b2f", vol: 1, bloom: 0.3 },
+        "mid-summer": { leaf: "#396b2f", vol: 1 },
         "mid-fall": { leaf: "#a3542f", vol: 0.7 },
         winter: { leaf: "#396b2f", vol: 0 },
       },
@@ -699,11 +750,14 @@ const FLOWERS: PlantSpecies[] = [
         branch: { pattern: "clumping", density: 0.7, color: "#4f7942" },
       },
       {
+        "mid-spring": { leaf: "#4f7942", vol: 0.55 },
         "late-spring": { leaf: "#4f7942", vol: 0.9, bloom: 1 },
         "early-summer": { leaf: "#4f7942", vol: 1, bloom: 0.9 },
         "mid-summer": { leaf: "#446b3a", vol: 1, bloom: 0.5 },
         "early-fall": { leaf: "#446b3a", vol: 0.9, bloom: 0.4 },
-        winter: { leaf: "#6d5c4b", vol: 0.1 },
+        "mid-fall": { leaf: "#6d5c4b", vol: 0.4 },
+        // Herbaceous border salvia dies back to the crown.
+        winter: { leaf: "#6d5c4b", vol: 0 },
       },
     ),
   },
@@ -729,11 +783,13 @@ const SUCCULENTS: PlantSpecies[] = [
         branch: { pattern: "upright", density: 0.6, color: "#7fa86b" },
       },
       {
+        "mid-spring": { leaf: "#93b881", vol: 0.5 },
         "late-spring": { leaf: "#93b881", vol: 0.7 },
         "mid-summer": { leaf: "#7fa86b", vol: 1, bloom: 0.2, flower: "#c8dba0" },
         "early-fall": { leaf: "#7fa86b", vol: 1, bloom: 1 },
-        "mid-fall": { leaf: "#8a9b6e", vol: 0.9, bloom: 0.7, flower: "#a1453a" },
-        winter: { leaf: "#7a5c48", vol: 0.2, bloom: 0.2, flower: "#6d4a38" },
+        "mid-fall": { leaf: "#8a9b6e", vol: 0.7, bloom: 0.5, flower: "#a1453a" },
+        // Fleshy foliage collapses after hard frost; dried heads are stems only.
+        winter: { leaf: "#7a5c48", vol: 0 },
       },
     ),
   },
@@ -754,6 +810,7 @@ const SUCCULENTS: PlantSpecies[] = [
       {
         "mid-spring": { leaf: "#7a9b68", vol: 0.85 },
         "mid-summer": { leaf: "#6f9163", vol: 0.9, bloom: 0.15 },
+        "mid-fall": { leaf: "#6f9163", vol: 0.85 },
         winter: { leaf: "#5f7a55", vol: 0.85 },
       },
     ),
@@ -783,6 +840,7 @@ const GROUNDCOVERS: PlantSpecies[] = [
         "mid-spring": { leaf: "#5c8f4f", vol: 0.85, bloom: 1 },
         "late-spring": { leaf: "#5c8f4f", vol: 0.9, bloom: 0.5 },
         "mid-summer": { leaf: "#4c7a3d", vol: 0.9 },
+        "mid-fall": { leaf: "#4c7a3d", vol: 0.85 },
         winter: { leaf: "#4a5d3a", vol: 0.8 },
       },
     ),
@@ -803,7 +861,9 @@ const GROUNDCOVERS: PlantSpecies[] = [
       },
       {
         "early-spring": { leaf: "#3e7c4f", vol: 0.9, bloom: 0.5 },
+        "mid-spring": { leaf: "#3e7c4f", vol: 0.95 },
         "mid-summer": { leaf: "#3e7c4f", vol: 1 },
+        "mid-fall": { leaf: "#3e7c4f", vol: 0.95 },
         winter: { leaf: "#39634a", vol: 0.9 },
       },
     ),
@@ -830,9 +890,12 @@ const VINES: PlantSpecies[] = [
         branch: { pattern: "weeping", density: 0.7, color: "#5d4037" },
       },
       {
+        "mid-spring": { leaf: "#7cb342", vol: 0.5 },
         "late-spring": { leaf: "#689f38", vol: 0.8, bloom: 0.3 },
         "early-summer": { leaf: "#558b2f", vol: 1, bloom: 1 },
+        "mid-summer": { leaf: "#558b2f", vol: 1, bloom: 0.7 },
         "late-summer": { leaf: "#4c7a3d", vol: 1, bloom: 0.4 },
+        "mid-fall": { leaf: "#689f38", vol: 0.7 },
         winter: { leaf: "#558b2f", vol: 0 },
       },
     ),
@@ -854,6 +917,7 @@ const VINES: PlantSpecies[] = [
       {
         "mid-spring": { leaf: "#3a6b45", vol: 0.95 },
         "mid-summer": { leaf: "#2f5d3a", vol: 1 },
+        "mid-fall": { leaf: "#2f5d3a", vol: 0.95 },
         winter: { leaf: "#2c4f34", vol: 0.95 },
       },
     ),

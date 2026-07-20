@@ -3,7 +3,7 @@
  *
  * - Viewport (pan/zoom) is ephemeral, kept in viewportStore (never in the doc).
  * - All interactions run as a local "session" (pan / marquee / move / resize /
- *   rotate / draw / freehand); previews are computed locally and the document
+ *   rotate / landscape polygon); previews are computed locally and the document
  *   store is mutated ONCE on pointerup, so each gesture is one undo step.
  * - Elements render in a zoomed <g>; selection chrome renders in screen space
  *   so handles stay a constant pixel size.
@@ -22,6 +22,11 @@ import {
   type Point,
 } from "../document/schema";
 import { selectActiveView, useEditorStore } from "../document/store";
+import {
+  isLandscapeDrawTool,
+  resolveDrawAppearance,
+} from "../landscape/drawTools";
+import { GroundLayerView } from "../landscape/GroundLayerView";
 import { ElementRenderer, TEXT_FONT_FAMILY } from "./ElementRenderer";
 import {
   boxFromPoints,
@@ -33,6 +38,19 @@ import {
   pointInRotatedBox,
   type Box,
 } from "./geometry";
+import { expandIdsByGroup } from "./groups";
+import { BUILTIN_SPECIES_BY_ID } from "../plants/catalog";
+import {
+  mergeSprayIntoPatch,
+  plantStampSize,
+  speciesUsesSpray,
+  SPRAY_CURSOR,
+  spraySpacing,
+} from "../plants/placement";
+import {
+  PlantContextMenu,
+  type PlantContextMenuState,
+} from "../ui/PlantContextMenu";
 import {
   resizeBox,
   resizeRotatedBox,
@@ -40,7 +58,6 @@ import {
   scaleBoxInGroup,
   type HandleKind,
 } from "./resize";
-import { smoothOpenPath } from "./rough";
 import {
   SelectionOverlay,
   getSelectionGeometry,
@@ -50,12 +67,6 @@ import { useHotkeys, isTypingTarget } from "./useHotkeys";
 import { gridStep, screenToCanvas, canvasToScreen } from "./viewport";
 import { useViewportStore } from "./viewportStore";
 
-const DEFAULT_STYLE = {
-  strokeColor: "#1e1e1e",
-  fillColor: "transparent",
-  strokeWidth: 2,
-};
-const DEFAULT_FONT_SIZE = 20;
 const CLICK_SLOP_PX = 3;
 
 // ---------------------------------------------------------------------------
@@ -90,13 +101,13 @@ type Session =
     }
   | { kind: "rotate"; id: string; center: Point; angle: number }
   | {
-      kind: "draw";
-      tool: "rect" | "ellipse";
-      startCanvas: Point;
-      currentCanvas: Point;
-      seed: number;
-    }
-  | { kind: "freehand"; points: Point[]; seed: number };
+      kind: "spray";
+      speciesId: string;
+      stampSize: number;
+      spacing: number;
+      lastCanvas: Point;
+      pending: Element[];
+    };
 
 interface PolygonDraft {
   points: Point[];
@@ -162,12 +173,17 @@ export function EditorCanvas() {
   const seasonPhase = useEditorStore((s) => s.seasonPhase);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const activeTool = useEditorStore((s) => s.activeTool);
+  const [contextMenu, setContextMenu] = useState<PlantContextMenuState | null>(
+    null,
+  );
   const activeSpeciesId = useEditorStore((s) => s.activeSpeciesId);
+  const stoneVariant = useEditorStore((s) => s.stoneVariant);
   const setSelectedIds = useEditorStore((s) => s.setSelectedIds);
   const setActiveTool = useEditorStore((s) => s.setActiveTool);
   const addElement = useEditorStore((s) => s.addElement);
   const updateElements = useEditorStore((s) => s.updateElements);
   const deleteElements = useEditorStore((s) => s.deleteElements);
+  const docSpecies = useEditorStore((s) => s.document.species);
 
   const viewport = useViewportStore((s) => s.viewport);
 
@@ -229,6 +245,11 @@ export function EditorCanvas() {
     };
   }, []);
 
+  // Cancel in-progress polygon when leaving a landscape draw tool.
+  useEffect(() => {
+    if (!isLandscapeDrawTool(activeTool)) setPolygonDraft(null);
+  }, [activeTool]);
+
   // --- polygon draft: Enter closes ------------------------------------------
   const closePolygon = useCallback(
     (draft: PolygonDraft) => {
@@ -240,6 +261,18 @@ export function EditorCanvas() {
           Math.hypot(p.x - arr[i - 1].x, p.y - arr[i - 1].y) > 0.5,
       );
       if (pts.length < 3) return;
+      const tool = useEditorStore.getState().activeTool;
+      const variant = useEditorStore.getState().stoneVariant;
+      const appearance = isLandscapeDrawTool(tool)
+        ? resolveDrawAppearance(tool, variant)
+        : {
+            role: "generic" as const,
+            style: {
+              strokeColor: "#1e1e1e",
+              fillColor: "transparent",
+              strokeWidth: 2,
+            },
+          };
       const box = boundsOfPoints(pts);
       const el: Element = {
         id: newId(),
@@ -253,12 +286,13 @@ export function EditorCanvas() {
         opacity: 1,
         locked: false,
         points: normalizePoints(pts, box),
-        style: { ...DEFAULT_STYLE },
-        role: "generic",
+        style: { ...appearance.style },
+        role: appearance.role,
       };
       addElement(el);
       setSelectedIds([el.id]);
-      setActiveTool("select");
+      // Stay on landscape tools so multiple beds/paths can be drawn in a row.
+      if (!isLandscapeDrawTool(tool)) setActiveTool("select");
     },
     [addElement, setSelectedIds, setActiveTool],
   );
@@ -399,56 +433,52 @@ export function EditorCanvas() {
     }
     if (e.button !== 0) return;
 
+    if (isLandscapeDrawTool(activeTool)) {
+      setPolygonDraft((d) =>
+        d
+          ? { points: [...d.points, canvas], cursor: canvas }
+          : { points: [canvas], cursor: canvas },
+      );
+      return;
+    }
+
     switch (activeTool) {
-      case "rect":
-      case "ellipse":
-        startSession(e, {
-          kind: "draw",
-          tool: activeTool,
-          startCanvas: canvas,
-          currentCanvas: canvas,
-          seed: newSeed(),
-        });
-        return;
-      case "freehand":
-        startSession(e, { kind: "freehand", points: [canvas], seed: newSeed() });
-        return;
-      case "polygon":
-        setPolygonDraft((d) =>
-          d
-            ? { points: [...d.points, canvas], cursor: canvas }
-            : { points: [canvas], cursor: canvas },
-        );
-        return;
-      case "text": {
-        setTextEdit({
-          id: null,
-          x: canvas.x,
-          y: canvas.y - DEFAULT_FONT_SIZE / 2,
-          fontSize: DEFAULT_FONT_SIZE,
-          color: "#1e1e1e",
-          value: "",
-        });
-        setActiveTool("select");
-        return;
-      }
       case "plant": {
         if (!activeSpeciesId) return;
-        const SIZE = 60;
-        const el: Element = {
+        const species =
+          docSpecies[activeSpeciesId] ??
+          BUILTIN_SPECIES_BY_ID.get(activeSpeciesId);
+        const archetype = species?.archetype ?? "shrub";
+        const SIZE = plantStampSize(archetype);
+        const makePlant = (at: Point, size = SIZE): Element => ({
           id: newId(),
           type: "plant",
-          x: canvas.x - SIZE / 2,
-          y: canvas.y - SIZE / 2,
-          width: SIZE,
-          height: SIZE,
+          x: at.x - size / 2,
+          y: at.y - size / 2,
+          width: size,
+          height: size,
           angle: 0,
           seed: newSeed(),
           opacity: 1,
           locked: false,
           speciesId: activeSpeciesId,
           showLabel: false,
-        };
+        });
+        if (speciesUsesSpray(archetype)) {
+          const spacing = spraySpacing(archetype, SIZE);
+          const first = makePlant(canvas);
+          startSession(e, {
+            kind: "spray",
+            speciesId: activeSpeciesId,
+            stampSize: SIZE,
+            spacing,
+            lastCanvas: canvas,
+            pending: [first],
+          });
+          setSelectedIds([]);
+          return;
+        }
+        const el = makePlant(canvas);
         addElement(el);
         setSelectedIds([el.id]);
         return;
@@ -456,17 +486,24 @@ export function EditorCanvas() {
       case "select": {
         const hit = hitTest(view.elements, canvas);
         if (hit) {
+          const groupIds = expandIdsByGroup(view.elements, [hit.id]);
           const wasSelected = selectedIds.includes(hit.id);
           let ids: string[];
           if (e.shiftKey) {
-            ids = wasSelected
-              ? selectedIds.filter((id) => id !== hit.id)
-              : [...selectedIds, hit.id];
+            if (wasSelected) {
+              const remove = new Set(groupIds);
+              ids = selectedIds.filter((id) => !remove.has(id));
+            } else {
+              ids = [...new Set([...selectedIds, ...groupIds])];
+            }
             setSelectedIds(ids);
             if (wasSelected) return; // toggled off: no move
           } else {
-            ids = wasSelected ? selectedIds : [hit.id];
+            ids = wasSelected
+              ? expandIdsByGroup(view.elements, selectedIds)
+              : groupIds;
             if (!wasSelected) setSelectedIds(ids);
+            else if (ids.length !== selectedIds.length) setSelectedIds(ids);
           }
           startSession(e, {
             kind: "move",
@@ -523,7 +560,11 @@ export function EditorCanvas() {
             boxesIntersect(marquee, elementAABB(boxOf(el), el.angle)),
           )
           .map((el) => el.id);
-        setSelectedIds([...new Set([...s.baseSelection, ...inside])]);
+        setSelectedIds(
+          expandIdsByGroup(view.elements, [
+            ...new Set([...s.baseSelection, ...inside]),
+          ]),
+        );
         return;
       }
       case "move": {
@@ -566,16 +607,35 @@ export function EditorCanvas() {
         });
         return;
       }
-      case "draw":
-        setSession({ ...s, currentCanvas: canvas });
-        return;
-      case "freehand": {
-        const last = s.points[s.points.length - 1];
-        const zoom = useViewportStore.getState().viewport.zoom;
-        if (Math.hypot(canvas.x - last.x, canvas.y - last.y) * zoom < 1.5) {
+      case "spray": {
+        if (Math.hypot(canvas.x - s.lastCanvas.x, canvas.y - s.lastCanvas.y) < s.spacing) {
           return;
         }
-        setSession({ ...s, points: [...s.points, canvas] });
+        // Jitter stamp size slightly so the mat doesn't look tiled.
+        const size = s.stampSize * (0.85 + Math.random() * 0.3);
+        const jittered = {
+          x: canvas.x + (Math.random() - 0.5) * s.spacing * 0.35,
+          y: canvas.y + (Math.random() - 0.5) * s.spacing * 0.35,
+        };
+        const el: Element = {
+          id: newId(),
+          type: "plant",
+          x: jittered.x - size / 2,
+          y: jittered.y - size / 2,
+          width: size,
+          height: size,
+          angle: 0,
+          seed: newSeed(),
+          opacity: 1,
+          locked: false,
+          speciesId: s.speciesId,
+          showLabel: false,
+        };
+        setSession({
+          ...s,
+          lastCanvas: canvas,
+          pending: [...s.pending, el],
+        });
         return;
       }
     }
@@ -590,6 +650,18 @@ export function EditorCanvas() {
       case "pan":
       case "marquee":
         return;
+      case "spray": {
+        const plants = s.pending.filter(
+          (el): el is Extract<Element, { type: "plant" }> =>
+            el.type === "plant",
+        );
+        const patch = mergeSprayIntoPatch(plants);
+        if (patch) {
+          addElement(patch);
+          setSelectedIds([patch.id]);
+        }
+        return;
+      }
       case "move": {
         if (s.moved) {
           const { dx, dy } = s;
@@ -599,8 +671,9 @@ export function EditorCanvas() {
             y: el.y + dy,
           }));
         } else if (!s.shift && s.wasSelected && selectedIds.length > 1) {
-          // Plain click on one element of a multi-selection: narrow to it.
-          setSelectedIds([s.downId]);
+          // Plain click on one element of a multi-selection: narrow to it
+          // (or its whole group, so imports stay one unit).
+          setSelectedIds(expandIdsByGroup(view.elements, [s.downId]));
         }
         return;
       }
@@ -616,50 +689,6 @@ export function EditorCanvas() {
       case "rotate": {
         const angle = s.angle;
         updateElements([s.id], (el) => ({ ...el, angle }));
-        return;
-      }
-      case "draw": {
-        const box = boxFromPoints(s.startCanvas, s.currentCanvas);
-        if (box.width < 2 && box.height < 2) return; // stray click
-        const el: Element = {
-          id: newId(),
-          type: s.tool,
-          x: box.x,
-          y: box.y,
-          width: Math.max(2, box.width),
-          height: Math.max(2, box.height),
-          angle: 0,
-          seed: s.seed,
-          opacity: 1,
-          locked: false,
-          style: { ...DEFAULT_STYLE },
-          role: "generic",
-        };
-        addElement(el);
-        setSelectedIds([el.id]);
-        setActiveTool("select");
-        return;
-      }
-      case "freehand": {
-        if (s.points.length < 2) return;
-        const box = boundsOfPoints(s.points);
-        const el: Element = {
-          id: newId(),
-          type: "freehand",
-          x: box.x,
-          y: box.y,
-          width: box.width,
-          height: box.height,
-          angle: 0,
-          seed: s.seed,
-          opacity: 1,
-          locked: false,
-          points: normalizePoints(s.points, box),
-          style: { ...DEFAULT_STYLE },
-        };
-        addElement(el);
-        setSelectedIds([el.id]);
-        setActiveTool("select");
         return;
       }
     }
@@ -708,30 +737,17 @@ export function EditorCanvas() {
         return els.map((el) =>
           el.id === session.id ? { ...el, angle: session.angle } : el,
         );
+      case "spray":
+        return [...els, ...session.pending];
       default:
         return els;
     }
   }, [view.elements, session, textEdit]);
 
-  // Draft shape while drawing.
-  const draft: Element | null = useMemo(() => {
-    if (session?.kind !== "draw") return null;
-    const box = boxFromPoints(session.startCanvas, session.currentCanvas);
-    return {
-      id: "__draft__",
-      type: session.tool,
-      x: box.x,
-      y: box.y,
-      width: Math.max(1, box.width),
-      height: Math.max(1, box.height),
-      angle: 0,
-      seed: session.seed,
-      opacity: 1,
-      locked: false,
-      style: { ...DEFAULT_STYLE },
-      role: "generic",
-    };
-  }, [session]);
+  const drawPreview = useMemo(() => {
+    if (!isLandscapeDrawTool(activeTool)) return null;
+    return resolveDrawAppearance(activeTool, stoneVariant);
+  }, [activeTool, stoneVariant]);
 
   const selectedElements = useMemo(
     () =>
@@ -756,6 +772,16 @@ export function EditorCanvas() {
   const step = gridStep(viewport.zoom);
   const gridSize = step * viewport.zoom;
 
+  const sprayMode =
+    activeTool === "plant" &&
+    !!activeSpeciesId &&
+    speciesUsesSpray(
+      (
+        docSpecies[activeSpeciesId] ??
+        BUILTIN_SPECIES_BY_ID.get(activeSpeciesId)
+      )?.archetype ?? "shrub",
+    );
+
   const cursor =
     session?.kind === "pan"
       ? "grabbing"
@@ -763,9 +789,11 @@ export function EditorCanvas() {
         ? "grab"
         : activeTool === "select"
           ? "default"
-          : activeTool === "text"
-            ? "text"
-            : "crosshair";
+          : sprayMode
+            ? SPRAY_CURSOR
+            : activeTool === "plant"
+              ? "cell"
+              : "crosshair";
 
   const textEditScreen = textEdit
     ? canvasToScreen(viewport, { x: textEdit.x, y: textEdit.y })
@@ -781,9 +809,50 @@ export function EditorCanvas() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={() => setSession(null)}
+        onPointerCancel={() => {
+          // Drop in-progress spray without committing.
+          setSession(null);
+        }}
         onDoubleClick={onDoubleClick}
-        onContextMenu={(e) => e.preventDefault()}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (activeTool !== "select") {
+            setContextMenu(null);
+            return;
+          }
+          const canvas = toCanvas(e);
+          const hit = hitTest(view.elements, canvas);
+          let plantIds: string[] = [];
+          if (hit?.type === "plant") {
+            if (!selectedIds.includes(hit.id)) {
+              const ids = expandIdsByGroup(view.elements, [hit.id]);
+              setSelectedIds(ids);
+              plantIds = ids.filter(
+                (id) =>
+                  view.elements.find((el) => el.id === id)?.type === "plant",
+              );
+            } else {
+              plantIds = selectedIds.filter(
+                (id) =>
+                  view.elements.find((el) => el.id === id)?.type === "plant",
+              );
+            }
+          } else {
+            plantIds = selectedIds.filter(
+              (id) =>
+                view.elements.find((el) => el.id === id)?.type === "plant",
+            );
+          }
+          if (plantIds.length === 0) {
+            setContextMenu(null);
+            return;
+          }
+          setContextMenu({
+            clientX: e.clientX,
+            clientY: e.clientY,
+            plantIds,
+          });
+        }}
       >
         <defs>
           <pattern
@@ -794,17 +863,24 @@ export function EditorCanvas() {
             x={((viewport.offsetX % gridSize) + gridSize) % gridSize}
             y={((viewport.offsetY % gridSize) + gridSize) % gridSize}
           >
-            <circle cx={0} cy={0} r={1} fill="#d4d4d4" />
-            <circle cx={gridSize} cy={0} r={1} fill="#d4d4d4" />
-            <circle cx={0} cy={gridSize} r={1} fill="#d4d4d4" />
-            <circle cx={gridSize} cy={gridSize} r={1} fill="#d4d4d4" />
+            <circle cx={0} cy={0} r={1} fill="var(--gk-grid)" />
+            <circle cx={gridSize} cy={0} r={1} fill="var(--gk-grid)" />
+            <circle cx={0} cy={gridSize} r={1} fill="var(--gk-grid)" />
+            <circle cx={gridSize} cy={gridSize} r={1} fill="var(--gk-grid)" />
           </pattern>
         </defs>
+        <rect width="100%" height="100%" fill="var(--gk-canvas)" />
         <rect width="100%" height="100%" fill="url(#dot-grid)" />
 
         <g
           transform={`translate(${viewport.offsetX} ${viewport.offsetY}) scale(${viewport.zoom})`}
         >
+          {view.ground && (
+            <GroundLayerView
+              ground={view.ground}
+              seasonPhase={seasonPhase}
+            />
+          )}
           {elements.map((el) => (
             <ElementRenderer
               key={el.id}
@@ -813,23 +889,6 @@ export function EditorCanvas() {
               seasonPhase={seasonPhase}
             />
           ))}
-          {draft && (
-            <ElementRenderer
-              element={draft}
-              species={doc.species}
-              seasonPhase={seasonPhase}
-            />
-          )}
-          {session?.kind === "freehand" && (
-            <path
-              d={smoothOpenPath(session.points)}
-              fill="none"
-              stroke={DEFAULT_STYLE.strokeColor}
-              strokeWidth={DEFAULT_STYLE.strokeWidth}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
           {polygonDraft && (
             <g>
               <polyline
@@ -840,7 +899,7 @@ export function EditorCanvas() {
                   .map((p) => `${p.x},${p.y}`)
                   .join(" ")}
                 fill="none"
-                stroke="#6965db"
+                stroke={drawPreview?.style.strokeColor ?? "var(--gk-accent)"}
                 strokeWidth={2 / viewport.zoom}
                 strokeDasharray={`${4 / viewport.zoom} ${4 / viewport.zoom}`}
               />
@@ -850,7 +909,7 @@ export function EditorCanvas() {
                   cx={p.x}
                   cy={p.y}
                   r={3 / viewport.zoom}
-                  fill="#6965db"
+                  fill={drawPreview?.style.strokeColor ?? "var(--gk-accent)"}
                 />
               ))}
             </g>
@@ -906,6 +965,13 @@ export function EditorCanvas() {
             }
           }}
           onBlur={() => commitTextEdit(textEdit)}
+        />
+      )}
+
+      {contextMenu && (
+        <PlantContextMenu
+          menu={contextMenu}
+          onClose={() => setContextMenu(null)}
         />
       )}
     </div>

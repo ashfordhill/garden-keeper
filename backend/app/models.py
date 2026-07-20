@@ -49,15 +49,38 @@ class SegmentResponse(BaseModel):
 
 
 class RectifyRequest(BaseModel):
-    """Corner order: top-left, top-right, bottom-right, bottom-left."""
+    """Corner order: top-left, top-right, bottom-right, bottom-left.
+
+    Axis-aligned bbox of the corners is cropped (no perspective warp).
+    ``realWidth`` / ``realHeight`` are optional legacy fields and ignored.
+    """
 
     corners: list[tuple[float, float]] = Field(min_length=4, max_length=4)
-    realWidth: float = Field(gt=0)
-    realHeight: float = Field(gt=0)
+    realWidth: float | None = Field(default=None, gt=0)
+    realHeight: float | None = Field(default=None, gt=0)
 
 
 class RectifyResponse(BaseModel):
     imageId: str
     width: int
     height: int
+    # Placeholder (no real-world calibration); kept for API shape stability.
     pixelsPerUnit: float
+
+
+class LayoutRequest(BaseModel):
+    maxVertices: int = Field(default=64, ge=3, le=512)
+
+
+class LayoutRegion(BaseModel):
+    """One structural piece of the yard extracted from the photo."""
+
+    role: Literal["grass", "mulch", "hardscape"]
+    polygon: list[tuple[float, float]]
+    bbox: BoxPrompt
+    areaPx: float
+    score: float
+
+
+class LayoutResponse(BaseModel):
+    regions: list[LayoutRegion]

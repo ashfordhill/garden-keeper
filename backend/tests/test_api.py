@@ -61,20 +61,36 @@ def test_segment_unknown_image():
     assert res.status_code == 404
 
 
-def test_rectify(image_id):
+def test_rectify_crops_bbox(image_id):
+    """Four corners → axis-aligned crop (no warp / no real-size scaling)."""
+    corners = [[100, 100], [700, 120], [750, 500], [80, 480]]
+    res = client.post(
+        f"/api/photos/{image_id}/rectify",
+        json={"corners": corners},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    # bbox: x 80..750, y 100..500 → 670 × 400
+    assert body["width"] == 670
+    assert body["height"] == 400
+    assert body["pixelsPerUnit"] > 0
+    img = client.get(f"/api/photos/{body['imageId']}/image")
+    assert img.status_code == 200
+    assert img.headers["content-type"] == "image/png"
+
+
+def test_rectify_ignores_legacy_real_size(image_id):
+    """Legacy realWidth/realHeight must not change crop pixel size."""
+    corners = [[100, 100], [700, 100], [700, 400], [100, 400]]
     res = client.post(
         f"/api/photos/{image_id}/rectify",
         json={
-            "corners": [[100, 100], [700, 120], [750, 500], [80, 480]],
+            "corners": corners,
             "realWidth": 10,
             "realHeight": 6,
         },
     )
     assert res.status_code == 200
     body = res.json()
-    assert body["pixelsPerUnit"] > 0
-    assert body["width"] == round(10 * body["pixelsPerUnit"])
-    # Rectified image is retrievable under its new id.
-    img = client.get(f"/api/photos/{body['imageId']}/image")
-    assert img.status_code == 200
-    assert img.headers["content-type"] == "image/png"
+    assert body["width"] == 600
+    assert body["height"] == 300

@@ -1,13 +1,6 @@
 /**
- * FROZEN CONTRACT (Wave 1): the backend inference API.
- *
- * Mirrored by Pydantic models in backend/app/models.py. Agent C implements
- * real inference behind these shapes; Agent E builds the photo UX against
- * them (the Wave 1 backend already answers with plausible canned responses,
- * so the UX is fully testable before real inference lands).
- *
- * All coordinates are pixels in the uploaded photo's coordinate system,
- * origin top-left.
+ * Backend inference / layout API client.
+ * Coordinates are pixels in the photo, origin top-left.
  */
 
 export interface PhotoUploadResponse {
@@ -16,7 +9,6 @@ export interface PhotoUploadResponse {
   height: number;
 }
 
-/** SAM-style point prompt. label 1 = foreground, 0 = background. */
 export interface PointPrompt {
   x: number;
   y: number;
@@ -33,18 +25,13 @@ export interface BoxPrompt {
 export interface SegmentRequest {
   points?: PointPrompt[];
   box?: BoxPrompt;
-  /** Max vertices in the simplified polygon (default 64). */
   maxVertices?: number;
 }
 
 export interface SegmentedRegion {
-  /** Simplified closed polygon, [x, y] pairs, photo pixel coordinates. */
   polygon: [number, number][];
-  /** Axis-aligned bounds of the mask. */
   bbox: BoxPrompt;
-  /** Mask area in pixels — used to size plant icons to footprint. */
   areaPx: number;
-  /** Model confidence 0..1. */
   score: number;
 }
 
@@ -52,29 +39,36 @@ export interface SegmentResponse {
   regions: SegmentedRegion[];
 }
 
+/** Four corners define an axis-aligned crop (no perspective warp). */
 export interface RectifyRequest {
-  /**
-   * The 4 photo-pixel corners of a real-world rectangle, in order:
-   * top-left, top-right, bottom-right, bottom-left.
-   */
   corners: [number, number][];
-  /** Real-world size of that rectangle, in the garden's measure unit. */
-  realWidth: number;
-  realHeight: number;
+  /** @deprecated Ignored — kept for older clients. */
+  realWidth?: number;
+  /** @deprecated Ignored — kept for older clients. */
+  realHeight?: number;
 }
 
 export interface RectifyResponse {
-  /** New imageId for the rectified (top-down) photo. */
   imageId: string;
   width: number;
   height: number;
-  /** Pixels per real-world unit in the rectified image. */
+  /** Placeholder; no real-world calibration from crop. */
   pixelsPerUnit: number;
 }
 
-// ---------------------------------------------------------------------------
-// Client
-// ---------------------------------------------------------------------------
+export type LayoutRole = "grass" | "mulch" | "hardscape";
+
+export interface LayoutRegion {
+  role: LayoutRole;
+  polygon: [number, number][];
+  bbox: BoxPrompt;
+  areaPx: number;
+  score: number;
+}
+
+export interface LayoutResponse {
+  regions: LayoutRegion[];
+}
 
 const BASE = "/api";
 
@@ -108,6 +102,7 @@ export async function segmentPhoto(
   );
 }
 
+/** Crop the axis-aligned bbox of four corners (no warp). */
 export async function rectifyPhoto(
   imageId: string,
   req: RectifyRequest,
@@ -116,7 +111,35 @@ export async function rectifyPhoto(
     await fetch(`${BASE}/photos/${imageId}/rectify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req),
+      body: JSON.stringify({ corners: req.corners }),
+    }),
+  );
+}
+
+export async function extractLayout(
+  imageId: string,
+  maxVertices = 48,
+): Promise<LayoutResponse> {
+  return json(
+    await fetch(`${BASE}/photos/${imageId}/layout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ maxVertices }),
+    }),
+  );
+}
+
+/** User-painted RGB label mask → grass/mulch/hardscape polygons. */
+export async function layoutFromLabels(
+  imageId: string,
+  labelPng: Blob,
+): Promise<LayoutResponse> {
+  const form = new FormData();
+  form.append("file", labelPng, "labels.png");
+  return json(
+    await fetch(`${BASE}/photos/${imageId}/layout/from-labels`, {
+      method: "POST",
+      body: form,
     }),
   );
 }

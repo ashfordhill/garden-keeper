@@ -7,18 +7,15 @@
  * - Pure SVG primitives only (paths, circles, ellipses) — no <image>, no
  *   filters that break SVG export.
  *
- * Rendering approach — top-down "garden plan" cartoon symbols:
- * - A wobbly canopy blob whose edge treatment comes from foliage.shape
- *   (lobed = bumpy cloud, needle/spiky = jagged, blade = star tuft, ...) and
- *   whose silhouette is stretched/lumped by branching.pattern & archetype.
- * - Branch strokes radiating from the center per branching.pattern
- *   (umbrella = swirled ribs, weeping = hooks curling back, spreading =
- *   long forked runners, clumping = grass-tuft blades, rosette = concentric
- *   pointed leaves instead of a blob).
- * - Blooms scattered over the canopy per bloom.shape/density.
+ * Rendering approach:
+ * - Trees: horizon / side-view silhouettes (trunk + branching + canopy),
+ *   not a top-down plan blob. Branching.pattern drives structure.
+ * - Shrubs / vines: top-down wobbly canopy + branch strokes.
+ * - Grasses: radial blade tuft (soft under-disk + filled blades).
+ * - Groundcovers: soft mat canopy + dense leaflet scatter.
+ * - Rosettes: concentric pointed leaves (succulents, etc.).
  * - All wobble comes from a seeded mulberry32 PRNG, so output never shimmers.
- * - Node count stays tiny (< ~10 elements/icon): detail lives in path *data*
- *   (merged subpaths), not in element count, so hundreds of plants stay fast.
+ * - Node count stays tiny: detail lives in path *data* (merged subpaths).
  */
 import type { ReactNode } from "react";
 import type {
@@ -302,6 +299,369 @@ function rosettePath(rng: Rng, r: number, density: number, volume: number): stri
   return d;
 }
 
+/**
+ * Top-down ornamental grass tuft: soft under-disk + filled radiating blades.
+ * Avoids the old "spiky blob canopy" look that read poorly at plan scale.
+ */
+function grassTuft(
+  rng: Rng,
+  r: number,
+  volume: number,
+  density: number,
+): { base: string; blades: string; stems: string } {
+  const vol = clamp01(volume);
+  const n = 12 + Math.round(density * 16) + Math.round(vol * 6);
+  const off = range(rng, 0, TAU);
+  let blades = "";
+  let stems = "";
+  for (let k = 0; k < n; k++) {
+    const a = off + (k / n) * TAU + jitter(rng, 0.22);
+    const len = r * (0.42 + 0.58 * vol) * range(rng, 0.55, 1);
+    const half = range(rng, 0.07, 0.13);
+    // Slight lateral bend so blades don't look like a rigid star.
+    const bend = jitter(rng, 0.14);
+    const tip = polar(a + bend, len);
+    const midL = polar(a + bend * 0.4 + half, len * 0.52);
+    const midR = polar(a + bend * 0.4 - half, len * 0.52);
+    const baseL = polar(a + half * 0.35, len * 0.06);
+    const baseR = polar(a - half * 0.35, len * 0.06);
+    blades += `M${N(baseL.x)} ${N(baseL.y)}Q${N(midL.x)} ${N(midL.y)} ${N(
+      tip.x,
+    )} ${N(tip.y)}Q${N(midR.x)} ${N(midR.y)} ${N(baseR.x)} ${N(baseR.y)}Z`;
+    if (vol < 0.08) {
+      // Winter / cut-back: thin standing stems instead of leafy blades.
+      stems += radialStroke(a, r * 0.02, len * range(rng, 0.55, 0.85), jitter(rng, 0.2));
+    }
+  }
+  // Soft oval under-disk (soil shadow) — only when leafy.
+  const br = r * (0.22 + 0.18 * vol);
+  const base =
+    vol > 0.08
+      ? `M${N(-br * 1.15)} ${N(0)}a${N(br * 1.15)} ${N(br * 0.85)} 0 1 0 ${N(
+          br * 2.3,
+        )} 0a${N(br * 1.15)} ${N(br * 0.85)} 0 1 0 ${N(-br * 2.3)} 0`
+      : "";
+  return { base, blades, stems };
+}
+
+// ---------------------------------------------------------------------------
+// Side-view (horizon) trees
+// ---------------------------------------------------------------------------
+
+interface SideTreeLayers {
+  trunk: string;
+  branches: string;
+  canopy: string;
+  highlight: string;
+  /** Crown center Y and radii — used to scatter blooms. */
+  canopyCy: number;
+  canopyRx: number;
+  canopyRy: number;
+}
+
+/**
+ * Classic 2D landscape-tree silhouette: trunk rises from the bottom of the
+ * icon box; canopy engulfs the upper trunk/branches so it never reads as a
+ * "stick with a hat". `branching.pattern` changes fork geometry.
+ *
+ * Only `needle` foliage uses conical evergreen tiers — `spiky` is deciduous
+ * (palmate / jagged crown), not a spruce hat.
+ */
+function sideViewTree(
+  rng: Rng,
+  R: number,
+  shape: FoliageShape,
+  pattern: BranchingPattern,
+  density: number,
+  volume: number,
+): SideTreeLayers {
+  const vol = clamp01(volume);
+  const dens = clamp01(density);
+  const groundY = R * 0.92;
+  const evergreen = shape === "needle";
+  const leafed = vol > 0.04;
+
+  // Crown geometry — sized so foliage overlaps the upper trunk.
+  let canopyCy = -R * 0.22;
+  let canopyRx = R * (0.58 + 0.18 * vol);
+  let canopyRy = R * (0.48 + 0.2 * vol);
+  // Trunk tip ends inside the crown (not below it).
+  let trunkTopY = canopyCy + canopyRy * 0.15;
+
+  switch (pattern) {
+    case "umbrella":
+      // Broad dome (Japanese maple habit): wide, medium-tall crown.
+      canopyCy = -R * 0.18;
+      canopyRx = R * (0.78 + 0.1 * vol);
+      canopyRy = R * (0.48 + 0.16 * vol);
+      trunkTopY = canopyCy + canopyRy * 0.35;
+      break;
+    case "vase":
+      canopyCy = -R * 0.32;
+      canopyRx = R * (0.5 + 0.16 * vol);
+      canopyRy = R * (0.52 + 0.16 * vol);
+      trunkTopY = canopyCy + canopyRy * 0.25;
+      break;
+    case "weeping":
+      canopyCy = -R * 0.12;
+      canopyRx = R * (0.55 + 0.14 * vol);
+      canopyRy = R * (0.58 + 0.18 * vol);
+      trunkTopY = canopyCy + canopyRy * 0.1;
+      break;
+    case "spreading":
+      canopyCy = -R * 0.1;
+      canopyRx = R * (0.82 + 0.08 * vol);
+      canopyRy = R * (0.4 + 0.14 * vol);
+      trunkTopY = canopyCy + canopyRy * 0.3;
+      break;
+    case "clumping":
+      canopyCy = -R * 0.2;
+      canopyRx = R * (0.66 + 0.14 * vol);
+      canopyRy = R * (0.46 + 0.16 * vol);
+      trunkTopY = canopyCy + canopyRy * 0.2;
+      break;
+    case "upright":
+    default:
+      if (evergreen) {
+        canopyCy = -R * 0.12;
+        canopyRx = R * (0.42 + 0.12 * vol);
+        canopyRy = R * (0.68 + 0.16 * vol);
+        trunkTopY = canopyCy + canopyRy * 0.55;
+      } else {
+        canopyCy = -R * 0.28;
+        canopyRx = R * (0.52 + 0.18 * vol);
+        canopyRy = R * (0.5 + 0.18 * vol);
+        trunkTopY = canopyCy + canopyRy * 0.2;
+      }
+      break;
+  }
+
+  // Foliage shape nudges the crown proportions.
+  if (shape === "oval") {
+    canopyRy *= 1.1;
+    canopyRx *= 0.92;
+  } else if (shape === "lobed" || shape === "spiky") {
+    // Palmate / toothed deciduous crowns — a bit wider, gently scalloped later.
+    canopyRx *= 1.06;
+    canopyRy *= 1.04;
+  } else if (shape === "heart") {
+    canopyRy *= 1.05;
+  } else if (shape === "feathery") {
+    canopyRx *= 1.08;
+  }
+
+  let trunk = "";
+  let branches = "";
+
+  const trunkLine = (
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    bend = 0,
+  ): string => {
+    const mx = (x0 + x1) / 2 + bend;
+    const my = (y0 + y1) / 2;
+    return `M${N(x0)} ${N(y0)}Q${N(mx)} ${N(my)} ${N(x1)} ${N(y1)}`;
+  };
+
+  if (pattern === "clumping") {
+    const stems = 2 + Math.round(dens * 2);
+    for (let i = 0; i < stems; i++) {
+      const t = stems === 1 ? 0 : i / (stems - 1) - 0.5;
+      const baseX = t * R * 0.22 + jitter(rng, R * 0.03);
+      const topX = t * R * 0.28 + jitter(rng, R * 0.04);
+      const topY = trunkTopY + jitter(rng, R * 0.05);
+      trunk += trunkLine(baseX, groundY, topX, topY, jitter(rng, R * 0.04));
+    }
+  } else if (pattern === "vase") {
+    const forkY = groundY * 0.45 + trunkTopY * 0.55;
+    trunk += trunkLine(0, groundY, 0, forkY, jitter(rng, R * 0.02));
+    const spread = R * (0.16 + 0.1 * dens);
+    trunk += trunkLine(0, forkY, -spread, trunkTopY, -R * 0.04);
+    trunk += trunkLine(0, forkY, spread, trunkTopY, R * 0.04);
+  } else {
+    trunk += trunkLine(
+      0,
+      groundY,
+      jitter(rng, R * 0.02),
+      trunkTopY,
+      jitter(rng, R * 0.03),
+    );
+  }
+
+  // Branches: when leafy, keep them short and aimed into the crown so the
+  // canopy covers their tips; when bare, let them read clearly.
+  const branchCount = leafed
+    ? 2 + Math.round(dens * 3)
+    : 4 + Math.round(dens * 5);
+  // Attach near the canopy underside — not mid-trunk below a floating hat.
+  const attachLo = 0.55;
+  const attachHi = 0.92;
+  for (let k = 0; k < branchCount; k++) {
+    const t =
+      attachLo +
+      (k / Math.max(1, branchCount - 1)) * (attachHi - attachLo);
+    const by = groundY + (trunkTopY - groundY) * t;
+    const side = k % 2 === 0 ? -1 : 1;
+
+    // Target a point inside the canopy mass.
+    let targetX =
+      side * canopyRx * range(rng, leafed ? 0.35 : 0.55, leafed ? 0.75 : 0.95);
+    let targetY =
+      canopyCy +
+      canopyRy *
+        range(rng, leafed ? -0.15 : -0.35, leafed ? 0.45 : 0.55);
+
+    if (pattern === "umbrella") {
+      targetY = canopyCy + canopyRy * range(rng, 0.05, leafed ? 0.55 : 0.7);
+      // Gentle upward-then-out arc into the dome.
+    } else if (pattern === "weeping") {
+      targetY = canopyCy + canopyRy * range(rng, 0.35, 0.95);
+    } else if (pattern === "spreading") {
+      targetY = canopyCy + canopyRy * range(rng, 0.1, 0.65);
+    } else if (pattern === "vase") {
+      targetY = canopyCy + canopyRy * range(rng, -0.2, 0.4);
+    } else if (evergreen) {
+      targetX =
+        side * canopyRx * range(rng, 0.4, 0.9) * (1.05 - t * 0.35);
+      targetY = canopyCy + canopyRy * range(rng, -0.3, 0.5);
+    }
+
+    if (pattern === "weeping") {
+      const midX = targetX * 0.55;
+      const midY = by + (targetY - by) * 0.3 - R * 0.06;
+      const endY = targetY + (leafed ? R * 0.02 : R * range(rng, 0.08, 0.2));
+      branches += `M${N(0)} ${N(by)}Q${N(midX)} ${N(midY)} ${N(targetX)} ${N(
+        endY,
+      )}`;
+      if (!leafed && rng() > 0.35) {
+        const tipY = endY + R * range(rng, 0.08, 0.16);
+        branches += `M${N(targetX)} ${N(endY)}Q${N(
+          targetX + side * R * 0.05,
+        )} ${N((endY + tipY) / 2)} ${N(targetX + side * R * 0.02)} ${N(tipY)}`;
+      }
+    } else {
+      const midX = targetX * 0.45 + side * R * 0.03;
+      const midY = by + (targetY - by) * 0.4 - R * (pattern === "umbrella" ? 0.08 : 0.02);
+      branches += `M${N(jitter(rng, R * 0.015))} ${N(by)}Q${N(midX)} ${N(
+        midY,
+      )} ${N(targetX)} ${N(targetY)}`;
+      if (!leafed && dens > 0.35 && rng() > 0.4) {
+        const fx = targetX + side * R * range(rng, 0.08, 0.18);
+        const fy = targetY + R * range(rng, -0.06, 0.1);
+        branches += `M${N(targetX * 0.75)} ${N(
+          by + (targetY - by) * 0.7,
+        )}L${N(fx)} ${N(fy)}`;
+      }
+    }
+  }
+
+  // Canopy silhouette (filled when leafy) — drawn after branches so tips tuck in.
+  let canopy = "";
+  let highlight = "";
+  if (leafed) {
+    if (evergreen) {
+      // Layered triangular / conical tiers (true conifers only).
+      const tiers = 3 + Math.round(dens * 2);
+      for (let i = 0; i < tiers; i++) {
+        const u = i / tiers;
+        const top = canopyCy - canopyRy * (0.95 - u * 0.12);
+        const bot = canopyCy + canopyRy * (-0.05 + u * 0.9);
+        const half =
+          canopyRx *
+          (0.35 + 0.65 * ((i + 1) / tiers)) *
+          range(rng, 0.92, 1.05);
+        const lean = jitter(rng, R * 0.03);
+        canopy += `M${N(lean)} ${N(top)}L${N(lean + half)} ${N(bot)}L${N(
+          lean - half,
+        )} ${N(bot)}Z`;
+      }
+    } else {
+      // Soft cloud / dome of overlapping lobes — never a single hard triangle.
+      const lobes =
+        shape === "lobed" || shape === "spiky" || shape === "feathery"
+          ? 7 + Math.round(dens * 3)
+          : shape === "heart"
+            ? 6
+            : 6 + Math.round(dens * 2);
+      const pts: Pt[] = [];
+      for (let i = 0; i < lobes; i++) {
+        const a = -Math.PI / 2 + (i / lobes) * TAU;
+        // Flatten underside slightly so the crown cradles the trunk.
+        const underside = Math.sin(a) > 0.35;
+        let rx = canopyRx * (underside ? 0.88 : 1) * (1 + jitter(rng, 0.07));
+        let ry = canopyRy * (underside ? 0.9 : 1) * (1 + jitter(rng, 0.07));
+        if (shape === "lobed" || shape === "spiky") {
+          rx *= 1 + (i % 2 === 0 ? 0.14 : -0.07);
+          ry *= 1 + (i % 2 === 0 ? 0.1 : -0.05);
+        }
+        if (pattern === "umbrella") {
+          // Domed top, fuller sides — classic maple / umbrella silhouette.
+          ry *= 1 + 0.12 * Math.cos(a);
+          if (underside) ry *= 1.05;
+        }
+        if (pattern === "weeping" && underside) {
+          ry *= 1.2;
+        }
+        if (shape === "heart" && a > -2.2 && a < -0.9) {
+          ry *= 0.85;
+          rx *= 1.05;
+        }
+        pts.push({
+          x: Math.cos(a) * rx,
+          y: canopyCy + Math.sin(a) * ry,
+        });
+      }
+      canopy = smoothClosed(pts);
+
+      if (vol > 0.4) {
+        const hPts = pts.map((p) => ({
+          x: p.x * 0.55 + jitter(rng, R * 0.02),
+          y: canopyCy + (p.y - canopyCy) * 0.45 - R * 0.05,
+        }));
+        highlight = smoothClosed(hPts);
+      }
+    }
+  }
+
+  return {
+    trunk,
+    branches,
+    canopy,
+    highlight,
+    canopyCy,
+    canopyRx,
+    canopyRy,
+  };
+}
+
+/** Dense mat texture for groundcovers: many tiny leaflets over a soft canopy. */
+function groundcoverLeaflets(
+  rng: Rng,
+  canR: number,
+  shape: FoliageShape,
+  density: number,
+): string {
+  const n = 14 + Math.round(density * 18);
+  let d = "";
+  for (let k = 0; k < n; k++) {
+    const p = polar(range(rng, 0, TAU), canR * Math.sqrt(rng()) * 0.92);
+    const a = range(rng, 0, TAU);
+    const len = canR * range(rng, 0.1, 0.22);
+    if (shape === "needle" || shape === "blade") {
+      d += pointedLeaf(p.x, p.y, a, len, 0.18);
+    } else {
+      const rx = len * range(rng, 0.35, 0.55);
+      const ry = len * range(rng, 0.22, 0.38);
+      d += `M${N(p.x - rx)} ${N(p.y)}a${N(rx)} ${N(ry)} 0 1 0 ${N(
+        2 * rx,
+      )} 0a${N(rx)} ${N(ry)} 0 1 0 ${N(-2 * rx)} 0`;
+    }
+  }
+  return d;
+}
+
 // ---------------------------------------------------------------------------
 // Foliage texture hints (interior detail)
 // ---------------------------------------------------------------------------
@@ -520,7 +880,167 @@ export function PlantIcon({ archetype, params, seed, size }: PlantIconProps) {
   const foliageEdge = shade(foliage.color, 0.68);
   const nodes: ReactNode[] = [];
 
-  if (isRosette) {
+  if (archetype === "tree") {
+    const tree = sideViewTree(
+      rng,
+      R,
+      foliage.shape,
+      branching.pattern,
+      branching.density,
+      volume,
+    );
+    const trunkStroke = size * (branching.pattern === "clumping" ? 0.045 : 0.055);
+    if (tree.trunk) {
+      nodes.push(
+        <path
+          key="trunk"
+          d={tree.trunk}
+          fill="none"
+          stroke={branching.color}
+          strokeWidth={trunkStroke}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />,
+      );
+    }
+    if (tree.branches) {
+      nodes.push(
+        <path
+          key="branches"
+          d={tree.branches}
+          fill="none"
+          stroke={branching.color}
+          strokeWidth={size * 0.028}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity={leafed ? 0.75 : 1}
+        />,
+      );
+    }
+    if (leafed && tree.canopy) {
+      nodes.push(
+        <path
+          key="canopy"
+          d={tree.canopy}
+          fill={foliage.color}
+          stroke={foliageEdge}
+          strokeWidth={size * 0.02}
+          strokeLinejoin="round"
+        />,
+      );
+      if (tree.highlight) {
+        nodes.push(
+          <path
+            key="highlight"
+            d={tree.highlight}
+            fill={shade(foliage.color, 1.25)}
+            opacity={0.45}
+          />,
+        );
+      }
+    }
+
+    // Blooms clustered in the crown (side-view scatter).
+    const density = clamp01(bloom.density);
+    const count =
+      density <= 0.02 ? 0 : Math.max(1, Math.round(density * BLOOM_MAX.tree));
+    if (count > 0) {
+      const plotR = leafed
+        ? Math.min(tree.canopyRx, tree.canopyRy) * 0.75
+        : R * 0.35;
+      const bs = size * 0.055;
+      // Offset bloom scatter into the canopy center via a translated group.
+      const layers = buildBlooms(
+        rng,
+        bloom.shape,
+        count,
+        plotR,
+        leafed ? Math.min(tree.canopyRx, tree.canopyRy) : R * 0.4,
+        bs,
+        bloom.color,
+      );
+      const bloomNodes: ReactNode[] = [];
+      if (layers.fill) {
+        bloomNodes.push(
+          <path
+            key="blooms"
+            d={layers.fill}
+            fill={bloom.color}
+            stroke={shade(bloom.color, 0.7)}
+            strokeWidth={size * 0.006}
+            strokeLinejoin="round"
+          />,
+        );
+      }
+      if (layers.centers) {
+        bloomNodes.push(
+          <path key="bloom-centers" d={layers.centers} fill={layers.centerColor} />,
+        );
+      }
+      if (layers.stroke) {
+        bloomNodes.push(
+          <path
+            key="bloom-strokes"
+            d={layers.stroke}
+            fill="none"
+            stroke={bloom.color}
+            strokeWidth={size * 0.02}
+            strokeLinecap="round"
+          />,
+        );
+      }
+      if (bloomNodes.length > 0) {
+        nodes.push(
+          <g
+            key="bloom-group"
+            transform={`translate(0 ${N(tree.canopyCy)})`}
+          >
+            {bloomNodes}
+          </g>,
+        );
+      }
+    }
+
+    return <g>{nodes}</g>;
+  }
+
+  if (archetype === "grass") {
+    const tuft = grassTuft(rng, R, volume, branching.density);
+    if (tuft.base) {
+      nodes.push(
+        <path
+          key="grass-base"
+          d={tuft.base}
+          fill={shade(foliage.color, 0.75)}
+          opacity={0.35}
+        />,
+      );
+    }
+    if (leafed && tuft.blades) {
+      nodes.push(
+        <path
+          key="grass-blades"
+          d={tuft.blades}
+          fill={foliage.color}
+          stroke={foliageEdge}
+          strokeWidth={size * 0.008}
+          strokeLinejoin="round"
+        />,
+      );
+    } else if (tuft.stems) {
+      nodes.push(
+        <path
+          key="grass-stems"
+          d={tuft.stems}
+          fill="none"
+          stroke={branching.color}
+          strokeWidth={size * 0.018}
+          strokeLinecap="round"
+          opacity={0.85}
+        />,
+      );
+    }
+  } else if (isRosette) {
     const d = rosettePath(rng, R * (0.5 + 0.5 * volume), branching.density, volume);
     nodes.push(
       <path
@@ -566,6 +1086,26 @@ export function PlantIcon({ archetype, params, seed, size }: PlantIconProps) {
           />,
         );
       }
+      if (archetype === "groundcover") {
+        const leaflets = groundcoverLeaflets(
+          rng,
+          canR,
+          foliage.shape,
+          branching.density,
+        );
+        if (leaflets) {
+          nodes.push(
+            <path
+              key="gc-leaflets"
+              d={leaflets}
+              fill={shade(foliage.color, 1.12)}
+              stroke={foliageEdge}
+              strokeWidth={size * 0.006}
+              opacity={0.85}
+            />,
+          );
+        }
+      }
     }
     const branches = branchesPath(rng, reach, branching.pattern, branching.density, axis);
     if (branches) {
@@ -577,11 +1117,11 @@ export function PlantIcon({ archetype, params, seed, size }: PlantIconProps) {
           stroke={branching.color}
           strokeWidth={size * (branching.pattern === "clumping" ? 0.022 : 0.028)}
           strokeLinecap="round"
-          opacity={leafed ? 0.8 : 1}
+          opacity={leafed ? (archetype === "groundcover" ? 0.45 : 0.8) : 1}
         />,
       );
     }
-    if (leafed && volume > 0.35) {
+    if (leafed && volume > 0.35 && archetype !== "groundcover") {
       const tex = texturePath(rng, canR, foliage.shape);
       if (tex) {
         nodes.push(
@@ -597,9 +1137,6 @@ export function PlantIcon({ archetype, params, seed, size }: PlantIconProps) {
         );
       }
     }
-    if (archetype === "tree") {
-      nodes.push(<circle key="trunk" r={size * 0.04} fill={branching.color} />);
-    }
   }
 
   // Blooms (drawn even on bare branches — e.g. redbud in early spring)
@@ -607,7 +1144,7 @@ export function PlantIcon({ archetype, params, seed, size }: PlantIconProps) {
   const count = density <= 0.02 ? 0 : Math.max(1, Math.round(density * BLOOM_MAX[archetype]));
   if (count > 0) {
     const plotR = (leafed ? canR : R * 0.6) * 0.78;
-    const bs = size * (archetype === "flower" ? 0.085 : archetype === "tree" ? 0.055 : 0.07);
+    const bs = size * (archetype === "flower" ? 0.085 : 0.07);
     const layers = buildBlooms(rng, bloom.shape, count, plotR, leafed ? canR : R * 0.7, bs, bloom.color);
     if (layers.fill) {
       nodes.push(

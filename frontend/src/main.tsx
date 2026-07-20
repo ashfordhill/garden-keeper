@@ -4,6 +4,9 @@ import "./index.css";
 import App from "./App.tsx";
 import { loadAutosave, startAutosave } from "./document/persistence";
 import { useEditorStore } from "./document/store";
+import { initTheme } from "./ui/theme";
+
+initTheme();
 
 const autosaved = loadAutosave();
 if (autosaved) {

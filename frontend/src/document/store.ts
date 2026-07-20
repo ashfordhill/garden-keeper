@@ -8,6 +8,7 @@
  * garden scale (hundreds of elements); revisit only if profiling says so.
  */
 import { create } from "zustand";
+import type { LandscapeDrawTool, StoneVariant } from "../landscape/drawTools";
 import {
   createEmptyDocument,
   type Element,
@@ -19,15 +20,11 @@ import {
 
 const MAX_HISTORY = 200;
 
-/** Editor tools, Excalidraw-style. Single-key hotkeys map to these. */
+/** Editor tools. Landscape draw tools place styled polygons. */
 export type Tool =
   | "select" // V
   | "hand" // H
-  | "rect" // R
-  | "ellipse" // E
-  | "polygon" // P
-  | "freehand" // D (draw)
-  | "text" // T
+  | LandscapeDrawTool
   | "plant"; // place plant from palette
 
 export interface EditorState {
@@ -37,6 +34,8 @@ export interface EditorState {
   activeTool: Tool;
   /** Species picked in the palette; used by the "plant" tool. */
   activeSpeciesId: string | null;
+  /** Stone / hardscape fill variant while a stone draw tool is active. */
+  stoneVariant: StoneVariant;
   /**
    * Season mode: null = display mode (each plant shows its displayPhase
    * form); otherwise every plant renders its form for this phase.
@@ -57,6 +56,8 @@ export interface EditorState {
   // --- convenience mutations ---------------------------------------------
   setActiveView: (viewId: string) => void;
   addElement: (element: Element) => void;
+  /** Batch insert (one undo step) — used by groundcover spray. */
+  addElements: (elements: Element[]) => void;
   updateElements: (
     ids: string[],
     fn: (element: Element) => Element,
@@ -68,6 +69,7 @@ export interface EditorState {
   setSelectedIds: (ids: string[]) => void;
   setActiveTool: (tool: Tool) => void;
   setActiveSpeciesId: (id: string | null) => void;
+  setStoneVariant: (variant: StoneVariant) => void;
   setSeasonPhase: (phase: SeasonPhase | null) => void;
 }
 
@@ -90,6 +92,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   selectedIds: [],
   activeTool: "select",
   activeSpeciesId: null,
+  stoneVariant: "concrete",
   seasonPhase: null,
   undoStack: [],
   redoStack: [],
@@ -147,6 +150,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       })),
     ),
 
+  addElements: (elements) => {
+    if (elements.length === 0) return;
+    get().mutateDocument((doc) =>
+      mutateActiveView(doc, (v) => ({
+        ...v,
+        elements: [...v.elements, ...elements],
+      })),
+    );
+  },
+
   updateElements: (ids, fn) =>
     get().mutateDocument((doc) =>
       mutateActiveView(doc, (v) => ({
@@ -174,6 +187,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setSelectedIds: (ids) => set({ selectedIds: ids }),
   setActiveTool: (tool) => set({ activeTool: tool }),
   setActiveSpeciesId: (id) => set({ activeSpeciesId: id }),
+  setStoneVariant: (variant) => set({ stoneVariant: variant }),
   setSeasonPhase: (phase) => set({ seasonPhase: phase }),
 }));
 

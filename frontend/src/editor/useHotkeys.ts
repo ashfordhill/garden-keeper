@@ -1,21 +1,25 @@
 /**
- * Global editor hotkeys. Tool keys are single letters (Excalidraw-style);
+ * Global editor hotkeys. Tool keys are single letters;
  * everything is suppressed while the user is typing in an input, textarea,
  * or contenteditable so text editing never triggers tools.
  */
 import { useEffect } from "react";
 import { useEditorStore, selectActiveView, type Tool } from "../document/store";
 import { newId, newSeed, type Element } from "../document/schema";
+import {
+  isPhotoOverlayVisible,
+  photoImageElements,
+  withPhotoVisibility,
+} from "../photo/overlayControls";
 
 const TOOL_KEYS: Record<string, Tool> = {
   v: "select",
   "1": "select",
   h: "hand",
-  r: "rect",
-  e: "ellipse",
-  p: "polygon",
-  d: "freehand",
-  t: "text",
+  s: "stonePath",
+  g: "grassPath",
+  m: "mulchBed",
+  k: "hardscape",
 };
 
 export function isTypingTarget(target: EventTarget | null): boolean {
@@ -111,6 +115,21 @@ export function useHotkeys(onEscape?: () => boolean) {
         s.updateElements(s.selectedIds, (el) =>
           el.locked ? el : { ...el, x: el.x + dx, y: el.y + dy },
         );
+        return;
+      }
+
+      // Toggle imported original photo overlay (O).
+      if (e.key.toLowerCase() === "o" && !e.altKey) {
+        const view = selectActiveView(s);
+        const imgs = photoImageElements(view);
+        if (imgs.length > 0) {
+          e.preventDefault();
+          const next = !isPhotoOverlayVisible(view);
+          s.updateElements(
+            imgs.map((el) => el.id),
+            (el) => withPhotoVisibility(el, next),
+          );
+        }
         return;
       }
 
